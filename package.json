@@ -2,13 +2,24 @@
   "name": "agenda-deportiva",
   "version": "1.0.0",
   "type": "module",
-  "main": "server.js",
+  "private": true,
+  "engines": {
+    "node": ">=18.x"
+  },
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "dev": "vercel dev",
+    "build": "echo 'No build step needed'",
+    "start": "vercel dev",
+    "postinstall": "puppeteer browsers install chrome"
   },
   "dependencies": {
-    "express": "^4.21.2",
-    "puppeteer": "^21.0.0"
+    "puppeteer": "^22.15.0",
+    "node-fetch": "^3.3.2",
+    "cheerio": "^1.0.0-rc.12",
+    "puppeteer-core": "^22.15.0",
+    "@sparticuz/chromium": "^127.0.0" 
+  },
+  "puppeteer": {
+    "default_browser": "chrome"
   }
 }

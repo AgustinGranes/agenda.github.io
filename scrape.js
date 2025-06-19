@@ -1,5 +1,6 @@
 // Cambiamos a la sintaxis de ES modules para las importaciones
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core'; // Changed to puppeteer-core
+import chromium from '@sparticuz/chromium'; // Import chromium
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
@@ -35,9 +36,9 @@ async function scrapeLa14HD() {
     try {
         // 1. Lanzar una instancia del navegador Chromium.
         browser = await puppeteer.launch({
-            headless: true,
-            // No es necesario definir executablePath si usas la versión que descarga puppeteer.
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'], // Use chromium args
+            executablePath: await chromium.executablePath(), // Specify the executable path
+            headless: chromium.headless, // Use chromium's headless setting
         });
 
         // 2. Abrir una nueva página en el navegador.
@@ -96,9 +97,11 @@ async function scrapeLa14HD() {
 
 export async function scrapeEvents() {
     console.log('Iniciando el scrapper...');
+    // Use puppeteer-core and chromium
     const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
     });
 
     try {

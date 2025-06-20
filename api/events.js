@@ -69,16 +69,25 @@ export default async (req, res) => {
         });
         // Obtener hora actual en zona horaria de Argentina
         const nowArgentina = getNowArgentina();
-        const adaptedEvents = Array.from(eventMap.values()).map(ev => {
-            const eventDate = parseTimeToDate(ev.time, ev.date);
-            let status = 'Pronto';
-            if (nowArgentina >= eventDate) status = 'EN VIVO';
-            return {
-                ...ev,
-                status,
-                options: ev.options
-            };
-        });
+        
+        // Convertir el Map a array y ordenar por fecha/hora
+        const adaptedEvents = Array.from(eventMap.values())
+            .map(ev => {
+                const eventDate = parseTimeToDate(ev.time, ev.date);
+                let status = 'Pronto';
+                if (nowArgentina >= eventDate) status = 'EN VIVO';
+                return {
+                    ...ev,
+                    status,
+                    options: ev.options,
+                    sortDate: eventDate // Añadimos esta propiedad para ordenar
+                };
+            })
+            .sort((a, b) => a.sortDate - b.sortDate) // Ordenar por fecha/hora
+            .map(ev => {
+                const { sortDate, ...eventWithoutSortDate } = ev; // Eliminar la propiedad temporal
+                return eventWithoutSortDate;
+            });
 
         // Send the extracted events as a JSON response
         return res.status(200).json(adaptedEvents);

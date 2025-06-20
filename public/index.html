@@ -39,14 +39,19 @@
         .btn {
             background-color: #404040;
             color: white;
-            transition: background-color 0.3s ease;
+            transition: all 0.3s ease;
+            position: relative;
+            min-width: 100px;
         }
+        
         .btn:hover {
             background-color: #4a4a4a;
         }
+        
         .btn.copied {
             animation: copySuccess 1s ease;
         }
+        
         @keyframes copySuccess {
             0%, 100% { background-color: #404040; }
             50% { background-color: #22c55e; }
@@ -101,12 +106,21 @@
 
         function createEventCard(event) {
             const isLive = event.status === 'EN VIVO';
-            const optionsHtml = event.options.map((link, index) => `
-                <button onclick="copyToClipboard('${link}', this)"
-                        class="btn px-4 py-2 rounded-md text-sm">
-                    Opción ${index + 1}
-                </button>
-            `).join('');
+            
+            // Filtrar las opciones que contengan lal0hd.com
+            const validOptions = event.options.filter(link => !link.includes('lal0hd.com'));
+            
+            const optionsHtml = validOptions.map((link, index) => {
+                // Obtener la última parte del enlace después del igual
+                const channelName = link.split('=').pop() || link;
+                
+                return `
+                    <button onclick="copyToClipboard('${link}', this)"
+                            class="btn px-4 py-2 rounded-md text-sm">
+                        ${channelName.toUpperCase()}
+                    </button>
+                `;
+            }).join('');
 
             return `
                 <div class="event-card rounded-lg p-4">

@@ -124,18 +124,29 @@
 
         #events-container {
             margin-top: 89px; /* 69px del header + 20px de espacio */
-            padding: 0 1rem;
+            padding: 0 1rem 1rem 1rem; /* Agregado padding-bottom de 1rem */
             max-width: 64rem;
             margin-left: auto;
             margin-right: auto;
+            padding-bottom: 1rem; /* Agregado para coincidir con el espacio entre eventos */
         }
 
         .status-live {
             animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            background-color: #dc2626;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
-        @keyframes pulse {
-            50% { opacity: .5; }
+        
+        .status-upcoming {
+            background-color: #6b7280;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
         }
+        
+        .status-finished {
+            background-color: #000000;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
         .loading-spinner {
             width: 40px;
             height: 40px;
@@ -218,29 +229,34 @@
         }
 
         function createEventCard(event) {
-            const isLive = event.status === 'EN VIVO';
-            
-            // Filtrar las opciones que contengan lal0hd.com
-            const validOptions = event.options.filter(link => !link.includes('lal0hd.com'));
-            
-            const optionsHtml = validOptions.map((link, index) => {
-                // Obtener la última parte del enlace después del igual
-                const channelName = link.split('=').pop() || link;
-                
-                return `
-                    <button onclick="copyToClipboard('${link}', this)"
-                            class="btn px-4 py-2 rounded-md text-sm">
-                        ${channelName.toUpperCase()}
-                    </button>
-                `;
-            }).join('');
+            let statusClass = '';
+            switch(event.status.toLowerCase()) {
+                case 'en vivo':
+                    statusClass = 'status-live';
+                    break;
+                case 'finalizado':
+                    statusClass = 'status-finished';
+                    break;
+                default:
+                    statusClass = 'status-upcoming';
+            }
 
+            function getButtonText(link) {
+                try {
+                    const url = new URL(link);
+                    const streamParam = url.searchParams.get('stream');
+                    return streamParam ? streamParam.toUpperCase() : 'OPCIÓN';
+                } catch {
+                    return 'OPCIÓN';
+                }
+            }
+            
             return `
                 <div class="event-card rounded-lg p-4">
                     <div class="flex flex-col space-y-4">
                         <div>
                             <div class="flex items-center gap-2 mb-2">
-                                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${isLive ? 'bg-red-500 text-white status-live' : 'bg-zinc-600 text-white'}">
+                                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold text-white uppercase ${statusClass}">
                                     ${event.status}
                                 </span>
                                 <span class="text-sm text-gray-300">${event.time}</span>
@@ -248,7 +264,12 @@
                             <h2 class="text-xl font-semibold text-white">${event.title}</h2>
                         </div>
                         <div class="flex flex-wrap gap-2">
-                            ${optionsHtml}
+                            ${event.options.map((link) => `
+                                <button onclick="copyToClipboard('${link}', this)"
+                                        class="btn px-4 py-2 rounded-md text-sm">
+                                    ${getButtonText(link)}
+                                </button>
+                            `).join('')}
                         </div>
                     </div>
                 </div>

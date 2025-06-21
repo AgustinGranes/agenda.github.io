@@ -1,31 +1,27 @@
 import fetch from 'node-fetch';
 
-function parseTimeToDate(time, date) {
-    // time: '21:00', date: '2025-06-19' => Date object in America/Argentina/Buenos_Aires
-    const [hour, minute] = time.split(':').map(Number);
-    const [year, month, day] = date.split('-').map(Number);
-    // Crear fecha en zona horaria de Argentina
-    return new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00-03:00`);
-}
+function adjustTimeZone(time, date) {
+    if (!time || !date) return time || '00:00';
 
-function getNowArgentina() {
-    // Obtener la hora actual en la zona horaria de Argentina
-    const now = new Date();
-    // Convertir a string en la zona horaria de Argentina y volver a Date
-    const formatter = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/Argentina/Buenos_Aires',
-        year: 'numeric', month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit', second: '2-digit',
-        hour12: false
-    });
-    const parts = formatter.formatToParts(now);
-    const y = parts.find(p => p.type === 'year').value;
-    const m = parts.find(p => p.type === 'month').value;
-    const d = parts.find(p => p.type === 'day').value;
-    const h = parts.find(p => p.type === 'hour').value;
-    const min = parts.find(p => p.type === 'minute').value;
-    const s = parts.find(p => p.type === 'second').value;
-    return new Date(`${y}-${m}-${d}T${h}:${min}:${s}-03:00`);
+    try {
+        const [hour, minute] = time.split(':').map(Number);
+        
+        if (isNaN(hour) || isNaN(minute)) return time;
+
+        // Ajustar hora: +2 horas desde el horario de Lima
+        let adjustedHour = hour + 2;
+        
+        // Manejar el cambio de día si es necesario
+        if (adjustedHour >= 24) {
+            adjustedHour -= 24;
+        }
+
+        // Formato de dos dígitos para hora y minutos
+        return `${String(adjustedHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+    } catch (error) {
+        console.error('Error al ajustar zona horaria:', error);
+        return time;
+    }
 }
 
 export default async (req, res) => {
@@ -44,8 +40,7 @@ export default async (req, res) => {
 
     try {
         console.log('Fetching eventos JSON...');
-        // Fetch the JSON of the eventos
-        const response = await fetch('https://la14hd.com/eventos/json/agenda123.json');
+        const response = await fetch('https://streamtpglobal.com/eventos.json');
         if (!response.ok) throw new Error('No se pudo obtener el JSON de eventos');
         const events = await response.json();
         console.log(`Eventos obtenidos: ${events.length} eventos.`);
@@ -53,43 +48,55 @@ export default async (req, res) => {
         // Agrupar eventos por título y hora, juntar links en options
         const eventMap = new Map();
         events.forEach(event => {
-            const key = `${event.title}__${event.time}`;
+            // Solo procesar eventos que tengan tiempo válido
+            if (event.time) {
+                // Extraer hora y minuto
+                const [hour, minute] = event.time.split(':').map(Number);
+                
+                // Sumar 2 horas
+                let newHour = hour + 2;
+                
+                // Ajustar si pasa de medianoche
+                if (newHour >= 24) {
+                    newHour -= 24;
+                }
+                
+                // Formatear la nueva hora
+                event.time = `${String(newHour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+            }
+
+            const key = `${event.title || 'Sin título'}__${event.time || '00:00'}`;
             if (!eventMap.has(key)) {
                 eventMap.set(key, {
-                    time: event.time,
-                    title: event.title,
+                    time: event.time || '00:00',
+                    title: event.title || 'Sin título',
                     options: [event.link],
-                    category: event.category,
-                    language: event.language,
-                    date: event.date
+                    category: event.category || 'Sin categoría',
+                    language: event.language || 'Desconocido',
+                    date: event.date || new Date().toISOString().split('T')[0],
+                    status: event.status || 'Próximo'
                 });
             } else {
-                eventMap.get(key).options.push(event.link);
+                if (event.link) {
+                    eventMap.get(key).options.push(event.link);
+                }
             }
         });
-        // Obtener hora actual en zona horaria de Argentina
-        const nowArgentina = getNowArgentina();
         
         // Convertir el Map a array y ordenar por fecha/hora
+        // Ordenar eventos: primero los no finalizados, luego los finalizados
         const adaptedEvents = Array.from(eventMap.values())
-            .map(ev => {
-                const eventDate = parseTimeToDate(ev.time, ev.date);
-                let status = 'Pronto';
-                if (nowArgentina >= eventDate) status = 'EN VIVO';
-                return {
-                    ...ev,
-                    status,
-                    options: ev.options,
-                    sortDate: eventDate // Añadimos esta propiedad para ordenar
-                };
-            })
-            .sort((a, b) => a.sortDate - b.sortDate) // Ordenar por fecha/hora
-            .map(ev => {
-                const { sortDate, ...eventWithoutSortDate } = ev; // Eliminar la propiedad temporal
-                return eventWithoutSortDate;
+            .sort((a, b) => {
+                // Si uno está finalizado y el otro no, el finalizado va al final
+                if (a.status.toLowerCase() === 'finalizado' && b.status.toLowerCase() !== 'finalizado') return 1;
+                if (a.status.toLowerCase() !== 'finalizado' && b.status.toLowerCase() === 'finalizado') return -1;
+                
+                // Si ambos tienen el mismo estado, ordenar por fecha/hora
+                const dateA = new Date(`${a.date} ${a.time}`);
+                const dateB = new Date(`${b.date} ${b.time}`);
+                return dateA - dateB;
             });
 
-        // Send the extracted events as a JSON response
         return res.status(200).json(adaptedEvents);
     } catch (error) {
         console.error('Error durante la obtención de eventos:', error);

@@ -25,38 +25,9 @@ function adjustTimeZone(time, date) {
     }
 }
 
-// Función para determinar si un evento está en vivo basado en la hora actual
+// Devuelve SIEMPRE el estado 'raw' (sin calcular) y deja que el frontend lo calcule
 function determineEventStatus(eventTime, eventDate) {
-    try {
-        if (!eventTime || eventTime === '00:00') return 'Próximo';
-
-        // Usar la fecha del evento si está disponible, si no, usar hoy
-        let baseDate = eventDate || new Date().toISOString().split('T')[0];
-        // baseDate en formato 'YYYY-MM-DD'
-        const [year, month, day] = baseDate.split('-').map(Number);
-        const [eventHour, eventMinute] = eventTime.split(':').map(Number);
-        if (isNaN(eventHour) || isNaN(eventMinute)) return 'Próximo';
-
-        // Obtener la hora actual de Buenos Aires (UTC-3)
-        const nowUTC = new Date();
-        const nowBuenosAires = new Date(nowUTC.getTime() - (nowUTC.getTimezoneOffset() * 60000) - (3 * 60 * 60 * 1000));
-
-        // Crear objeto Date para el inicio del evento en Buenos Aires
-        const eventStart = new Date(year, month - 1, day, eventHour, eventMinute, 0, 0);
-        // Crear objeto Date para el final (3h después)
-        const eventEnd = new Date(eventStart.getTime() + (180 * 60 * 1000));
-
-        if (nowBuenosAires >= eventStart && nowBuenosAires < eventEnd) {
-            return 'En vivo';
-        } else if (nowBuenosAires < eventStart) {
-            return 'Próximo';
-        } else {
-            return 'Finalizado';
-        }
-    } catch (error) {
-        console.error('Error al determinar estado del evento:', error);
-        return 'Próximo';
-    }
+    return null; // No calcular aquí, lo hará el frontend
 }
 
 /**
@@ -354,7 +325,6 @@ async function fetchAlanGuloTVEvents() {
                             category: 'Deportes',
                             language: 'Español',
                             date: new Date().toISOString().split('T')[0],
-                            status: 'Próximo', // Se actualizará después
                             source: 'alangulotv'
                         });
                     });
@@ -445,7 +415,6 @@ async function fetchAlanGuloTVFallback() {
                         category: 'Deportes',
                         language: 'Español',
                         date: new Date().toISOString().split('T')[0],
-                        status: 'Próximo', // Se actualizará después
                         source: 'alangulotv'
                     });
                 }
@@ -534,7 +503,6 @@ export default async (req, res) => {
             // El estado se calcula SIEMPRE usando la hora que se muestra (event.time ya ajustada)
             const key = `${event.title || 'Sin título'}__${event.time || '00:00'}__${event.source}`;
             if (!eventMap.has(key)) {
-                const status = determineEventStatus(event.time, event.date); // event.time es la que ve el usuario
                 eventMap.set(key, {
                     time: event.time || '00:00',
                     title: event.title || 'Sin título',
@@ -543,7 +511,6 @@ export default async (req, res) => {
                     category: event.category || 'Sin categoría',
                     language: event.language || 'Desconocido',
                     date: event.date || new Date().toISOString().split('T')[0],
-                    status: status,
                     source: event.source || 'unknown'
                 });
             } else {
@@ -581,11 +548,9 @@ export default async (req, res) => {
                 // Primero: En vivo
                 if (a.status === 'En vivo' && b.status !== 'En vivo') return -1;
                 if (a.status !== 'En vivo' && b.status === 'En vivo') return 1;
-                
                 // Segundo: Próximos (ordenados por horario)
                 if (a.status === 'Próximo' && b.status === 'Finalizado') return -1;
                 if (a.status === 'Finalizado' && b.status === 'Próximo') return 1;
-                
                 // Dentro del mismo estado, ordenar por hora
                 const [hourA, minuteA] = a.time.split(':').map(Number);
                 const [hourB, minuteB] = b.time.split(':').map(Number);

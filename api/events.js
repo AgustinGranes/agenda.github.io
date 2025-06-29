@@ -67,6 +67,8 @@ const channelsGrouped = {
     'ESPN 5': ['espn5-a', 'espn5-b', 'espn5-c', 'espn5-d', 'espn5'],
     'ESPN 6': ['espn6-a', 'espn6-b', 'espn6-c', 'espn6-d', 'espn6'],
     'ESPN 7': ['espn7-a', 'espn7-b', 'espn7-c', 'espn7-d', 'espn7'],
+    'ESPNDEPORTES': ['espndeportes-a'],
+    'ESPN DEPORTES': ['espndeportes-a'],
     'ESPN PREMIUM': ['espn-premium-a', 'espn-premium-b', 'espn-premium-c', 'espn-premium-d', 'espnpremium'],
     'TNT SPORTS': ['tnt-a', 'tnt-b', 'tnt-c', 'tnt-d', 'tntsports'],
     'TYC SPORTS': ['tyc-a', 'tyc-b', 'tyc-c', 'tyc-d'],
@@ -282,7 +284,7 @@ async function fetchAlanGuloTVEvents() {
                         const href = $link.attr('href');
                         let buttonName = $link.text().trim();
                         if (!buttonName) buttonName = 'CANAL';
-                        let finalLink = href;
+                        let finalLink;
                         // Si el href es /canal/xxx/ o https://alangulotv.live/canal/xxx/ extraer xxx y usarlo como key
                         let canalKey = null;
                         const canalMatch = href && href.match(/\/canal\/([a-zA-Z0-9\-]+)\//);
@@ -307,6 +309,30 @@ async function fetchAlanGuloTVEvents() {
                             channelKey = channelKey + '-a';
                         }
                         finalLink = `https://play.alangulotv.live/?channel=${channelKey}`;
+                        // REEMPLAZOS ESPECIALES
+                        if (finalLink === 'https://play.alangulotv.live/?channel=disneyextensinpc') {
+                            finalLink = 'https://play.alangulotv.live/?channel=transmi1';
+                        } else if (finalLink === 'https://play.alangulotv.live/?channel=foxsportsmx') {
+                            finalLink = 'https://play.alangulotv.live/?channel=foxmx-a';
+                        } else if (finalLink === 'https://play.alangulotv.live/?channel=directv') {
+                            finalLink = 'https://play.alangulotv.live/?channel=dtv-a';
+                        }
+                        // REEMPLAZO FINAL SEGÚN TU PEDIDO
+                        if (finalLink === 'https://play.alangulotv.live/?channel=telemetraoficialdealangulotv') {
+                            finalLink = 'https://alangulo-dashboard-f1.vercel.app/';
+                            buttonName = 'TELEMETRIA OFICIAL';
+                        } else if (finalLink === 'https://play.alangulotv.live/?channel=multif1') {
+                            finalLink = 'https://alangulotv.live/canal/multi-f1/';
+                            buttonName = 'MULTICAM (ALANGULOTV)';
+                        }
+
+                        // Si el link final es uno de los dos especiales, forzar el nombre del botón aunque sea 'OPCION'
+                        if (finalLink === 'https://alangulotv.live/canal/multi-f1/') {
+                            buttonName = 'MULTICAM (ALANGULOTV)';
+                        }
+                        if (finalLink === 'https://alangulo-dashboard-f1.vercel.app/') {
+                            buttonName = 'TELEMETRIA OFICIAL';
+                        }
                         links.push({
                             name: buttonName,
                             url: finalLink
@@ -445,7 +471,7 @@ export default async (req, res) => {
     try {
         console.log('Iniciando obtención de eventos...');
         
-        // Obtener eventos de ambas fuentes en paralelo con timeout
+        // Obtener eventos de ambas fuentes en paralelo with timeout
         const [streamTpEvents, alanGuloEvents] = await Promise.allSettled([
             Promise.race([
                 fetchStreamTpGlobalEvents(),
@@ -479,7 +505,6 @@ export default async (req, res) => {
         
         // Procesar eventos: ajustar horarios y agrupar por título y hora
         const eventMap = new Map();
-        
         allEvents.forEach(event => {
             // Solo procesar eventos que tengan tiempo válido
             if (event.time) {
@@ -503,11 +528,21 @@ export default async (req, res) => {
             // El estado se calcula SIEMPRE usando la hora que se muestra (event.time ya ajustada)
             const key = `${event.title || 'Sin título'}__${event.time || '00:00'}__${event.source}`;
             if (!eventMap.has(key)) {
+                let buttonArr = [];
+                if (event.source === 'streamtpglobal' && event.link) {
+                    // Extraer el valor después del igual en el parámetro stream
+                    const match = event.link.match(/[?&]stream=([^&#]+)/i);
+                    buttonArr = [match ? match[1].toUpperCase() : 'CANAL'];
+                } else if (event.button) {
+                    buttonArr = [event.button];
+                } else {
+                    buttonArr = [];
+                }
                 eventMap.set(key, {
                     time: event.time || '00:00',
                     title: event.title || 'Sin título',
                     options: [event.link],
-                    buttons: event.button ? [event.button] : undefined,
+                    buttons: buttonArr,
                     category: event.category || 'Sin categoría',
                     language: event.language || 'Desconocido',
                     date: event.date || new Date().toISOString().split('T')[0],
@@ -516,70 +551,70 @@ export default async (req, res) => {
             } else {
                 if (event.link) {
                     eventMap.get(key).options.push(event.link);
-                    if (event.button) {
-                        if (!eventMap.get(key).buttons) eventMap.get(key).buttons = [];
+                    if (event.source === 'streamtpglobal') {
+                        const match = event.link.match(/[?&]stream=([^&#]+)/i);
+                        eventMap.get(key).buttons.push(match ? match[1].toUpperCase() : 'CANAL');
+                    } else if (event.button) {
                         eventMap.get(key).buttons.push(event.button);
+                    } else {
+                        eventMap.get(key).buttons.push('CANAL');
                     }
                 }
             }
         });
-        
-        // Convertir el Map a array y ordenar correctamente
-        const adaptedEvents = Array.from(eventMap.values())
-            .map(event => {
-                if (event.buttons && Array.isArray(event.buttons)) {
-                    // Filtrar botones que sean 'OPCION' o vacíos SOLO si hay otros válidos
-                    let validButtons = event.buttons.filter(btn => btn && !btn.toUpperCase().includes('OPCION'));
-                    if (validButtons.length > 0) {
-                        event.buttons = validButtons;
-                    } else {
-                        // Si todos son 'OPCION', inferir canal del título
-                        if (event.title && event.title !== 'Sin título') {
-                            const canalInferido = event.title.split('vs')[0].trim().toUpperCase();
-                            event.buttons = [canalInferido || 'CANAL'];
-                        } else {
-                            event.buttons = ['CANAL'];
-                        }
-                    }
-                }
-                return event;
-            })
-            .sort((a, b) => {
-                // Primero: En vivo
-                if (a.status === 'En vivo' && b.status !== 'En vivo') return -1;
-                if (a.status !== 'En vivo' && b.status === 'En vivo') return 1;
-                // Segundo: Próximos (ordenados por horario)
-                if (a.status === 'Próximo' && b.status === 'Finalizado') return -1;
-                if (a.status === 'Finalizado' && b.status === 'Próximo') return 1;
-                // Dentro del mismo estado, ordenar por hora
-                const [hourA, minuteA] = a.time.split(':').map(Number);
-                const [hourB, minuteB] = b.time.split(':').map(Number);
-                const timeA = hourA * 60 + minuteA;
-                const timeB = hourB * 60 + minuteB;
-                if (timeA !== timeB) {
-                    return timeA - timeB;
-                }
-                // Si tienen el mismo horario, ordenar alfabéticamente por título
-                return a.title.localeCompare(b.title, 'es', { sensitivity: 'base' });
-            });
 
-        console.log(`Eventos finales procesados: ${adaptedEvents.length}`);
-        
-        // Log de estado de eventos para debugging
-        const statusCounts = adaptedEvents.reduce((acc, event) => {
-            acc[event.status] = (acc[event.status] || 0) + 1;
-            return acc;
-        }, {});
-        console.log('Estados de eventos:', statusCounts);
-        
-        return res.status(200).json(adaptedEvents);
-        
-    } catch (error) {
-        console.error('Error durante la obtención de eventos:', error);
-        return res.status(500).json({
-            error: 'Error al obtener los eventos',
-            message: error.message,
-            details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        // Alinear y corregir botones especiales
+        const adaptedEvents = Array.from(eventMap.values()).map(event => {
+            // Asegurar que buttons y options tengan la misma longitud
+            if (!event.buttons) event.buttons = [];
+            while (event.buttons.length < event.options.length) {
+                event.buttons.push('CANAL');
+            }
+            // Corregir textos especiales y nunca dejar 'OPCION' para los links especiales
+            event.options.forEach((opt, idx) => {
+                if (opt === 'https://alangulotv.live/canal/multi-f1/') {
+                    event.buttons[idx] = 'MULTICAM (ALANGULOTV)';
+                }
+                if (opt === 'https://alangulo-dashboard-f1.vercel.app/') {
+                    event.buttons[idx] = 'TELEMETRIA OFICIAL';
+                }
+            });
+            // Si algún botón es 'OPCION', reemplazarlo por 'CANAL' salvo que sea especial
+            event.buttons = event.buttons.map((btn, idx) => {
+                if (!btn || btn.toUpperCase().includes('OPCION')) {
+                    if (event.options[idx] === 'https://alangulotv.live/canal/multi-f1/') return 'MULTICAM (ALANGULOTV)';
+                    if (event.options[idx] === 'https://alangulo-dashboard-f1.vercel.app/') return 'TELEMETRIA OFICIAL';
+                    return 'CANAL';
+                }
+                return btn;
+            });
+            // Indicador de estado (Buenos Aires UTC-3)
+            try {
+                const [hour, minute] = event.time.split(':').map(Number);
+                const eventDate = event.date || new Date().toISOString().split('T')[0];
+                // Crear fecha de inicio en Buenos Aires
+                const start = new Date(`${eventDate}T${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:00-03:00`);
+                const now = new Date();
+                // Convertir now a Buenos Aires (UTC-3)
+                const nowBuenosAires = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
+                const diffMs = nowBuenosAires - start;
+                if (diffMs < 0) {
+                    event.status = 'Próximo';
+                } else if (diffMs <= 3 * 60 * 60 * 1000) {
+                    event.status = 'En vivo';
+                } else {
+                    event.status = 'Finalizado';
+                }
+            } catch (e) {
+                event.status = undefined;
+            }
+            return event;
         });
+
+        // Devolver respuesta
+        return res.status(200).json(adaptedEvents);
+    } catch (error) {
+        console.error('Error en la función principal:', error);
+        return res.status(500).json({ error: 'Error interno del servidor' });
     }
 };
